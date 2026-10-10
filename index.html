@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hyphal Branching Tree</title>
+<style>
+  /* Layout: metrics left, tree centre, controls right; on narrow screens tree first, then controls, then metrics. */
+  :root { --bg:#ffffff; --card:#f4f3ee; --text:#1f1e1d; --muted:#6b6a65; --border:#d3d1c7; --warn:#A32D2D; --accent:#378ADD; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#1f1e1d; --card:#2c2c2a; --text:#f1efe8; --muted:#b4b2a9; --border:#5f5e5a; --warn:#F09595; --accent:#85B7EB; color-scheme:dark } }
+  :root[data-theme="dark"] { --bg:#1f1e1d; --card:#2c2c2a; --text:#f1efe8; --muted:#b4b2a9; --border:#5f5e5a; --warn:#F09595; --accent:#85B7EB; color-scheme:dark }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:18px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:1800px; margin:0 auto; padding-block:20px; padding-inline:24px; }
+  h1 { font-size:28px; font-weight:500; margin:0 0 16px; }
+  .layout { display:grid; grid-template-columns:280px minmax(0,1fr) 360px; gap:28px; align-items:start; }
+  .layout > section { min-width:0; }
+  .metrics { display:grid; grid-template-columns:1fr; gap:12px; }
+  .metric { background:var(--card); border-radius:10px; padding:14px 18px; min-width:0; }
+  .metric .l { font-size:17px; color:var(--muted); }
+  .metric .v { font-size:36px; font-weight:500; line-height:1.25; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+  .formula { font-size:16px; color:var(--muted); margin:14px 0 0; }
+  .formula i, .row i, .metric i { font-family:Georgia,"Times New Roman",serif; }
+  #warn { color:var(--warn); font-size:16px; min-height:24px; margin:0 0 4px; }
+  #msg { color:var(--muted); font-size:15px; min-height:22px; margin-top:10px; }
+  canvas { width:100%; height:calc(100vh - 265px); min-height:480px; display:block; touch-action:pan-y; }
+  #legend { display:flex; flex-wrap:wrap; gap:10px 24px; margin:14px 0 0; font-size:20px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  #legend span.i { display:inline-flex; align-items:center; gap:8px; }
+  .row { display:grid; grid-template-columns:1fr auto; gap:6px 12px; margin:0 0 20px; color:var(--muted); }
+  .row label.n { grid-column:1; grid-row:1; }
+  .row .o { grid-column:2; grid-row:1; color:var(--text); font-weight:500; font-variant-numeric:tabular-nums; }
+  .row input[type=range] { grid-column:1 / 3; grid-row:2; width:100%; margin:0; height:28px; accent-color:var(--accent); }
+  .btns { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:20px; }
+  .btns + .btns { margin-top:10px; }
+  .foot { margin-top:28px; padding-top:14px; border-top:1px solid var(--border); font-size:15px; color:var(--muted); }
+  button { font:inherit; color:var(--text); background:transparent; border:1px solid var(--border); border-radius:10px; padding:10px 12px; cursor:pointer; }
+  button:hover { background:var(--card); }
+  button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns:minmax(0,1fr); gap:24px; }
+    .c-tree { order:1; } .c-ctrl { order:2; } .c-metrics { order:3; }
+    .metrics { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    canvas { height:clamp(340px,105vw,640px); min-height:0; }
+  }
+  @media (max-width: 600px) {
+    body { font-size:16px; }
+    main { padding-inline:16px; padding-block:14px; }
+    h1 { font-size:22px; margin-bottom:8px; }
+    .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .metric { padding:10px 12px; }
+    .metric .l { font-size:14px; }
+    .metric .v { font-size:26px; }
+    #legend { font-size:14px; gap:6px 14px; }
+    .formula { font-size:14px; }
+  }
+</style>
+<style>[hidden]{display:none!important}</style>
+</head>
+<body>
+<main>
+  <h1>Hyphal branching tree</h1>
+  <div class="layout">
+    <section class="c-metrics">
+      <div class="metrics">
+        <div class="metric"><div class="l">Root order</div><div class="v" id="m-root">–</div></div>
+        <div class="metric"><div class="l">Leaves</div><div class="v" id="m-leaf">–</div></div>
+        <div class="metric"><div class="l">Segments</div><div class="v" id="m-seg">–</div></div>
+        <div class="metric"><div class="l">Bifurcation ratio <i>R<sub>B</sub></i></div><div class="v" id="m-rb">–</div></div>
+        <div class="metric"><div class="l">Length ratio <i>R<sub>L</sub></i></div><div class="v" id="m-rl">–</div></div>
+        <div class="metric"><div class="l">Fractal dimension <i>D</i></div><div class="v" id="m-d">–</div></div>
+      </div>
+      <div class="formula"><i>N</i><sub>1</sub> ∝ <i>ℓ</i><sup> −<i>D</i></sup>, &nbsp; <i>D</i> = ln <i>R<sub>B</sub></i> / ln <i>R<sub>L</sub></i></div>
+      <div class="formula" id="m-fit"></div>
+    </section>
+    <section class="c-tree">
+      <div id="warn"></div>
+      <canvas id="cv"></canvas>
+      <div id="legend"></div>
+    </section>
+    <section class="c-ctrl">
+      <div class="row"><label class="n" for="ord">Target order Ω</label><input type="range" id="ord" min="2" max="16" step="1" value="10"><span class="o" id="ord-o">10</span></div>
+      <div class="row"><label class="n" for="ang">Branch angle</label><input type="range" id="ang" min="8" max="60" step="1" value="26"><span class="o" id="ang-o">26°</span></div>
+      <div class="row"><label class="n" for="rat">Length ratio <i>r</i></label><input type="range" id="rat" min="1.1" max="2.5" step="0.05" value="1.6"><span class="o" id="rat-o">1.60</span></div>
+      <div class="row"><label class="n" for="ta">Side branches <i>a</i></label><input type="range" id="ta" min="0" max="2" step="0.05" value="0.5"><span class="o" id="ta-o">0.50</span></div>
+      <div class="row"><label class="n" for="tc">Side branch growth <i>c</i></label><input type="range" id="tc" min="1" max="3" step="0.05" value="1.5"><span class="o" id="tc-o">1.50</span></div>
+      <div class="row"><label class="n" for="sang">Side branch angle</label><input type="range" id="sang" min="10" max="90" step="1" value="46"><span class="o" id="sang-o">46°</span></div>
+      <div class="formula" style="margin-top:0">Side branches of order <i>k</i> on a stream of order <i>ω</i>:<br><i>T</i><sub><i>ω</i>,<i>k</i></sub> = <i>a</i> · <i>c</i><sup> <i>ω</i>−<i>k</i>−1</sup> &nbsp;(Tokunaga), <i>k</i> = 1 … <i>ω</i>−1</div>
+      <div class="btns"><button id="regen">Regenerate</button></div>
+      <div class="btns" id="dlbtns" hidden>
+        <button id="png">Download PNG</button>
+        <button id="svg">Download SVG</button>
+        <button id="csv">Download CSV</button>
+      </div>
+      <div id="msg" role="status"></div>
+    </section>
+  </div>
+  <footer class="foot">Concept and design: Xinyu Pan · Code generated with Claude (Anthropic) · 2026<br>For illustration and teaching only.</footer>
+</main>
+<script>
+(function(){
+const PAL=['#97C459','#639922','#5DCAA5','#1D9E75','#85B7EB','#378ADD','#AFA9EC','#7F77DD','#D4537E','#D85A30','#A32D2D','#BA7517','#993556','#0C447C','#27500A','#888780'];
+const MAX_SEG=window.matchMedia('(max-width: 700px)').matches?150000:400000;
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+let seed=7,OMEGA,theta,sideAng,ratio,TA,TC,nodes=[],streams=[];
+function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;}
+function len(o){return Math.pow(ratio,o-1);}
+function T(o,k){return TA*Math.pow(TC,o-k-1);}
+function seg(x0,y0,x1,y1,parent){const n={id:nodes.length,parent:parent?parent.id:-1,x0,y0,x1,y1,ch:[],o:0};nodes.push(n);if(parent)parent.ch.push(n);return n;}
+// One call = one stream of nominal order o, split into segments at each side-branch junction.
+function make(o,x,y,a,parent){
+  const L=len(o),sx=Math.sin(a),cy=Math.cos(a),js=[];
+  if(TA>0)for(let k=1;k<o;k++){
+    const t=T(o,k);let m=Math.floor(t);if(rnd()<t-m)m++;
+    for(let i=0;i<m;i++)js.push({t:0.06+0.88*rnd(),k});
+  }
+  js.sort((p,q)=>p.t-q.t);
+  let px=x,py=y,cur=parent;
+  for(const j of js){
+    const qx=x+sx*L*j.t,qy=y-cy*L*j.t;
+    cur=seg(px,py,qx,qy,cur);
+    make(j.k,qx,qy,a+(rnd()<0.5?-1:1)*sideAng,cur);
+    px=qx;py=qy;
+  }
+  const ex=x+sx*L,ey=y-cy*L;
+  cur=seg(px,py,ex,ey,cur);
+  if(o>1){make(o-1,ex,ey,a-theta,cur);make(o-1,ex,ey,a+theta,cur);}
+}
+function expected(O){
+  const E=[0,1];
+  for(let o=2;o<=O;o++){let e=1+2*E[o-1];for(let k=1;k<o;k++)e+=T(o,k)*(E[k]+1);E[o]=e;if(e>1e9)return e;}
+  return E[O];
+}
+function computeOrders(){
+  // children always have a larger id than their parent, so a reverse sweep is bottom-up
+  for(let i=nodes.length-1;i>=0;i--){
+    const n=nodes[i];
+    if(!n.ch.length){n.o=1;continue;}
+    let m=0,c=0;
+    for(const ch of n.ch){if(ch.o>m){m=ch.o;c=1;}else if(ch.o===m)c++;}
+    n.o=c>=2?m+1:m;
+  }
+}
+function dash(){for(const id of['m-root','m-leaf','m-seg','m-rb','m-rl','m-d'])$(id).textContent='–';$('m-fit').textContent='';$('legend').innerHTML='';}
+function build(){
+  OMEGA=+$('ord').value;
+  theta=+$('ang').value*Math.PI/180;
+  sideAng=+$('sang').value*Math.PI/180;
+  ratio=+$('rat').value;
+  TA=+$('ta').value;TC=+$('tc').value;
+  const est=expected(OMEGA);
+  if(est>MAX_SEG){
+    nodes=[];dash();draw();
+    $('warn').textContent='About '+(est>=1e9?'more than 1e9':Math.round(est).toLocaleString())+' segments expected (limit '+MAX_SEG.toLocaleString()+'). Reduce Ω, a or c.';
+    return;
+  }
+  $('warn').textContent='';
+  nodes=[];
+  const s0=seed;
+  make(OMEGA,0,0,0,null);
+  seed=s0;
+  computeOrders();
+  const ro=nodes[0].o;
+  streams=new Array(OMEGA+1).fill(0);let leaves=0;
+  const totLen=new Array(OMEGA+1).fill(0);
+  for(const n of nodes){
+    if(!n.ch.length)leaves++;
+    if(!n.ch.some(c=>c.o===n.o))streams[n.o]++;
+    totLen[n.o]+=Math.hypot(n.x1-n.x0,n.y1-n.y0);
+  }
+  // Horton ratios: least-squares slope of ln N_w and ln mean stream length vs w
+  const xs=[],lnN=[],lnL=[];
+  for(let o=1;o<=OMEGA;o++)if(streams[o]>0){xs.push(o);lnN.push(Math.log(streams[o]));lnL.push(Math.log(totLen[o]/streams[o]));}
+  const slope=(x,y)=>{const m=x.length,mx=x.reduce((a,b)=>a+b,0)/m,my=y.reduce((a,b)=>a+b,0)/m;let sxy=0,sxx=0;for(let i=0;i<m;i++){sxy+=(x[i]-mx)*(y[i]-my);sxx+=(x[i]-mx)*(x[i]-mx);}return sxy/sxx;};
+  const RB=Math.exp(-slope(xs,lnN)),RL=Math.exp(slope(xs,lnL)),D=Math.log(RB)/Math.log(RL);
+  $('m-root').textContent=ro;
+  $('m-leaf').textContent=leaves.toLocaleString();
+  $('m-seg').textContent=nodes.length.toLocaleString();
+  $('m-rb').textContent=RB.toFixed(3);
+  $('m-rl').textContent=RL.toFixed(3);
+  $('m-d').textContent=isFinite(D)?D.toFixed(3):'–';
+  let fit='Least-squares fit over ω = 1…'+OMEGA+' (per stream).';
+  if(TA>0){const s=2+TA+TC,rbT=(s+Math.sqrt(s*s-8*TC))/2;fit+='<br>Tokunaga asymptote: <i>R<sub>B</sub></i> = '+rbT.toFixed(3)+', <i>D</i> = '+(Math.log(rbT)/Math.log(ratio)).toFixed(3);}
+  $('m-fit').innerHTML=fit;
+  let h='';
+  for(let o=1;o<=OMEGA;o++)h+='<span class="i"><span style="width:26px;height:'+Math.max(3,Math.round(1.5+o*0.7))+'px;background:'+PAL[o-1]+';border-radius:2px"></span>ω='+o+' · N='+streams[o].toLocaleString()+'</span>';
+  $('legend').innerHTML=h;
+  draw();
+}
+function fit(W,H,pad){
+  let a=1e9,b=1e9,c=-1e9,d=-1e9;
+  for(const n of nodes){a=Math.min(a,n.x0,n.x1);c=Math.max(c,n.x0,n.x1);b=Math.min(b,n.y0,n.y1);d=Math.max(d,n.y0,n.y1);}
+  const s=Math.min((W-2*pad)/(c-a||1),(H-2*pad)/(d-b||1));
+  return {s,ox:(W-(c-a)*s)/2-a*s,oy:(H-(d-b)*s)/2-b*s};
+}
+function lw(o){return 0.4+(o-1)*0.55;}
+function byOrder(){const g=[];for(let o=0;o<=OMEGA;o++)g.push([]);for(const n of nodes)g[n.o].push(n);return g;}
+function paint(g,W,H){
+  if(!nodes.length)return;
+  const f=fit(W,H,12),grp=byOrder();
+  g.lineCap='round';
+  for(let o=1;o<=OMEGA;o++){
+    if(!grp[o].length)continue;
+    g.strokeStyle=PAL[o-1];g.lineWidth=lw(o);g.beginPath();
+    for(const n of grp[o]){g.moveTo(n.x0*f.s+f.ox,n.y0*f.s+f.oy);g.lineTo(n.x1*f.s+f.ox,n.y1*f.s+f.oy);}
+    g.stroke();
+  }
+}
+function draw(){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  paint(ctx,W,H);
+}
+let dl=null;
+const msg=t=>{$('msg').textContent=t;};
+function localSave(name,blob){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function save(name,blob){
+  msg('');
+  if(!dl){localSave(name,blob);return;}
+  dl.save({filename:name,data:blob}).then(()=>msg('Saved '+name+'.')).catch(e=>{
+    const c=e&&e.code;
+    if(c==='declined')return;
+    if(c==='rate_limited')msg('A save prompt is already open. Finish it, then try again.');
+    else if(c==='too_large')msg('This file is too large to save here. Lower Ω, a or c and try again.');
+    else msg('Saving files is not available in this view.');
+  });
+}
+if(window.claude&&window.claude.use){
+  window.claude.use('downloads').then(d=>{if(d){dl=d;$('dlbtns').hidden=false;}});
+}else{$('dlbtns').hidden=false;}
+$('png').addEventListener('click',()=>{
+  if(!nodes.length)return;
+  const W=2400,H=1800,k=3,c=document.createElement('canvas');c.width=W;c.height=H;
+  const g=c.getContext('2d');g.fillStyle='#ffffff';g.fillRect(0,0,W,H);
+  g.scale(k,k);paint(g,W/k,H/k);
+  c.toBlob(b=>save('strahler_tree_order'+OMEGA+'.png',b),'image/png');
+});
+$('svg').addEventListener('click',()=>{
+  if(!nodes.length)return;
+  const W=1200,H=900,f=fit(W,H,16),grp=byOrder(),parts=['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" fill="none" stroke-linecap="round">\n'];
+  for(let o=1;o<=OMEGA;o++){
+    if(!grp[o].length)continue;
+    const d=[];
+    for(const n of grp[o])d.push('M'+(n.x0*f.s+f.ox).toFixed(2)+' '+(n.y0*f.s+f.oy).toFixed(2)+'L'+(n.x1*f.s+f.ox).toFixed(2)+' '+(n.y1*f.s+f.oy).toFixed(2));
+    parts.push('<path id="order-'+o+'" stroke="'+PAL[o-1]+'" stroke-width="'+lw(o).toFixed(2)+'" d="'+d.join('')+'"/>\n');
+  }
+  parts.push('</svg>');
+  save('strahler_tree_order'+OMEGA+'.svg',new Blob(parts,{type:'image/svg+xml'}));
+});
+$('csv').addEventListener('click',()=>{
+  if(!nodes.length)return;
+  const rows=['id,parent_id,strahler_order,x0,y0,x1,y1\n'];
+  for(const n of nodes)rows.push([n.id,n.parent,n.o,n.x0.toFixed(5),(-n.y0).toFixed(5),n.x1.toFixed(5),(-n.y1).toFixed(5)].join(',')+'\n');
+  save('strahler_tree_order'+OMEGA+'.csv',new Blob(rows,{type:'text/csv'}));
+});
+function bind(id,fmt){$(id).addEventListener('input',e=>{$(id+'-o').textContent=fmt(e.target.value);build();});}
+bind('ord',v=>v);
+bind('ang',v=>v+'°');
+bind('sang',v=>v+'°');
+bind('rat',v=>(+v).toFixed(2));
+bind('ta',v=>(+v).toFixed(2));
+bind('tc',v=>(+v).toFixed(2));
+$('regen').addEventListener('click',()=>{seed=(Math.random()*4294967296)>>>0;build();});
+window.addEventListener('resize',draw);
+build();
+})();
+</script>
+</body>
+</html>
